@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>AUTOSTABI — Ground Station</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   AUTOSTABI Ground Station v2 — IBus Edition
+   Dark cockpit aesthetic, amber/cyan EFIS palette, no external deps
+   ═══════════════════════════════════════════════════════════════════════ */
+:root {
+  --bg:      #090b0e;
+  --panel:   #0f1419;
+  --panel2:  #141c24;
+  --border:  #1b2535;
+  --amber:   #ffb000;
+  --amber-d: #5a3d00;
+  --green:   #00e676;
+  --green-d: #003d1e;
+  --cyan:    #00cfff;
+  --cyan-d:  #003a4d;
+  --red:     #ff3b3b;
+  --red-d:   #3d0f0f;
+  --yellow:  #ffd600;
+  --text:    #bdd0de;
+  --dim:     #374a5a;
+  --mono:    'Courier New', 'Lucida Console', monospace;
+  --r:       5px;
+  --sh:      0 4px 22px rgba(0,0,0,.6);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+/* ── Header ────────────────────────────────────────────────────────── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 20px;
+  background: var(--panel);
+  border-bottom: 2px solid var(--border);
+  box-shadow: var(--sh);
+  z-index: 20;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.brand {
+  font-family: var(--mono);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--amber);
+  white-space: nowrap;
+}
+.hbtns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.hright{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* ── Buttons ── */
+button {
+  padding: 6px 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--panel2);
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: .75rem;
+  letter-spacing: 1px;
+  transition: border-color .2s, color .2s;
+  white-space: nowrap;
+}
+button:hover { border-color: var(--amber); color: var(--amber); }
+button.active { border-color: var(--cyan); color: var(--cyan); }
+
+/* ── Connection badge ── */
+.conn-wrap { display: flex; align-items: center; gap: 6px; }
+.dot {
+  width: 9px; height: 9px; border-radius: 50%; background: #222;
+  flex-shrink: 0; transition: background .3s, box-shadow .3s;
+}
+.dot.connected   { background: var(--green); box-shadow: 0 0 7px var(--green); }
+.dot.connecting  { background: var(--yellow); animation: blink 1s infinite; }
+.conn-txt { font-family: var(--mono); font-size: .75rem; color: var(--dim); }
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+/* ── Mode / status badges ── */
+.badge {
+  padding: 3px 12px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  border: 1px solid;
+}
+.badge-normal   { color: var(--green);  border-color: var(--green);  background: var(--green-d); }
+.badge-direct   { color: var(--yellow); border-color: var(--yellow); background: #2a2200; }
+.badge-recover  { color: #ff8c00; border-color: #ff8c00; background: #2a1a00; }
+.badge-failsafe { color: var(--amber); border-color: var(--amber); background: var(--amber-d);
+                  animation: blink .7s infinite; }
+.badge-crash    { color: var(--red);   border-color: var(--red);   background: var(--red-d);
+                  animation: blink .5s infinite; }
+.badge-landing  { color: var(--cyan);  border-color: var(--cyan);  background: var(--cyan-d); }
+.badge-takeoff  { color: #a0ff60; border-color: #a0ff60; background: #0d2000; }
+
+/* ── Main grid ── */
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 330px;
+  grid-template-rows: auto auto;
+  gap: 12px;
+  padding: 12px;
+  max-width: 1440px;
+  margin: 0 auto;
+  width: 100%;
+}
+@media(max-width:960px) {
+  main { grid-template-columns: 1fr; }
+}
+
+/* ── Card ── */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 14px;
+  box-shadow: var(--sh);
+}
+.card-title {
+  font-size: .62rem;
+  letter-spacing: 3px;
+  color: var(--dim);
+  margin-bottom: 12px;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+
+/* ── AHI column ── */
+.ahi-col { display: flex; flex-direction: column; gap: 12px; }
+
+/* ── AHI canvas ── */
+.ahi-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+canvas#ahi {
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  box-shadow: 0 0 28px rgba(0,207,255,.1), inset 0 0 40px rgba(0,0,0,.5);
+  max-width: 100%;
+}
+.att-row {
+  display: flex;
+  gap: 28px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.att-item { text-align: center; }
+.att-label {
+  font-family: var(--mono);
+  font-size: .6rem;
+  letter-spacing: 2px;
+  color: var(--dim);
+}
+.att-value {
+  font-family: var(--mono);
+  font-size: 1.55rem;
+  color: var(--cyan);
+  line-height: 1.1;
+}
+.att-value.warn { color: var(--amber); }
+.att-value.crit { color: var(--red); animation: blink .4s infinite; }
+
+/* ── Servo bars ── */
+.servo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.bar-item { display: flex; flex-direction: column; gap: 4px; }
+.bar-header {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: .62rem;
+  color: var(--dim);
+}
+.bar-track {
+  height: 9px;
+  background: #0a0f16;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  position: relative;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 80ms linear;
+  background: linear-gradient(90deg, var(--cyan) 0%, var(--amber) 100%);
+}
+/* Center tick mark */
+.bar-track::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: rgba(255,255,255,.15);
+}
+
+/* ── Channel bars ── */
+.ch-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+.ch-item { display: flex; flex-direction: column; gap: 3px; }
+.ch-track {
+  height: 7px;
+  background: #0a0f16;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.ch-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 80ms linear;
+  background: var(--amber-d);
+}
+.ch-label {
+  font-family: var(--mono);
+  font-size: .6rem;
+  color: var(--dim);
+  display: flex;
+  justify-content: space-between;
+}
+
+/* ── VRA slider ── */
+.vra-row { display: flex; align-items: center; gap: 10px; }
+.vra-row input[type=range] {
+  flex: 1;
+  height: 6px;
+  accent-color: var(--amber);
+  cursor: pointer;
+}
+.vra-value {
+  font-family: var(--mono);
+  font-size: .95rem;
+  color: var(--amber);
+  min-width: 40px;
+  text-align: right;
+}
+
+/* ── Switch badges ── */
+.sw-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.sw-pill {
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: .62rem;
+  letter-spacing: 1px;
+  border: 1px solid var(--border);
+  color: var(--dim);
+  transition: .2s;
+}
+.sw-pill.on {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: var(--amber-d);
+}
+.ts-line {
+  font-family: var(--mono);
+  font-size: .62rem;
+  color: var(--dim);
+}
+.ts-line span { color: var(--text); }
+
+/* ── Graph ── */
+canvas#graph {
+  width: 100%;
+  height: 130px;
+  display: block;
+  border-radius: var(--r);
+  background: #0a0f16;
+}
+
+/* ── Full-width bottom ── */
+.full-row { grid-column: 1 / -1; }
+
+/* ── Right column ── */
+.right-col { display: flex; flex-direction: column; gap: 12px; }
+
+/* ── IMU health strip ── */
+.health-row {
+  display: flex;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: .65rem;
+  flex-wrap: wrap;
+}
+.health-item {
+  padding: 2px 8px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--dim);
+}
+.health-item.ok    { border-color: var(--green); color: var(--green); }
+.health-item.warn  { border-color: var(--amber); color: var(--amber); }
+.health-item.error { border-color: var(--red);   color: var(--red); }
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────────── -->
+<header>
+  <span class="brand">✈ AUTOSTABI  GS</span>
+
+  <div class="hbtns">
+    <div class="conn-wrap">
+      <span class="dot" id="dot"></span>
+      <span class="conn-txt" id="connTxt">DISCONNECTED</span>
+    </div>
+    <button onclick="wsConnect()" id="btnBind">BIND / RECONNECT</button>
+    <button onclick="resetHorizon()">RESET HORIZON</button>
+    <button onclick="sendToggleMode()">TOGGLE MODE</button>
+  </div>
+
+  <div class="hright">
+    <span class="badge badge-normal" id="modeBadge">NORMAL</span>
+    <span class="badge badge-crash"  id="crashBadge"  style="display:none">⚠ CRASH PREV</span>
+    <span class="badge badge-failsafe" id="fsBadge"   style="display:none">⚠ FAILSAFE</span>
+  </div>
+</header>
+
+<!-- ── Main layout ─────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Left: AHI + Graph -->
+  <div class="ahi-col">
+    <div class="card">
+      <div class="card-title">Attitude Indicator (EFIS)</div>
+      <div class="ahi-wrap">
+        <canvas id="ahi" width="380" height="380"></canvas>
+        <div class="att-row">
+          <div class="att-item">
+            <div class="att-label">ROLL</div>
+            <div class="att-value" id="rollNum">0.0°</div>
+          </div>
+          <div class="att-item">
+            <div class="att-label">PITCH</div>
+            <div class="att-value" id="pitchNum">0.0°</div>
+          </div>
+          <div class="att-item">
+            <div class="att-label">YAW RATE</div>
+            <div class="att-value" id="yawNum">0.0°/s</div>
+          </div>
+        </div>
+        <div class="health-row" id="healthRow">
+          <span class="health-item" id="imuHealth">IMU —</span>
+          <span class="health-item" id="ibusHealth">IBus —</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card full-row">
+      <div class="card-title">Roll (cyan) &amp; Pitch (amber) — 10 second history</div>
+      <canvas id="graph" width="900" height="130"></canvas>
+    </div>
+  </div>
+
+  <!-- Right column -->
+  <div class="right-col">
+
+    <!-- Servo bars -->
+    <div class="card">
+      <div class="card-title">Servo Positions (µs)</div>
+      <div class="servo-grid">
+        <div class="bar-item">
+          <div class="bar-header"><span>LEFT AIL</span><span id="v_ls">—</span></div>
+          <div class="bar-track"><div class="bar-fill" id="b_ls" style="width:50%"></div></div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-header"><span>RIGHT AIL</span><span id="v_rs">—</span></div>
+          <div class="bar-track"><div class="bar-fill" id="b_rs" style="width:50%"></div></div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-header"><span>ELEVATOR</span><span id="v_es">—</span></div>
+          <div class="bar-track"><div class="bar-fill" id="b_es" style="width:50%"></div></div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-header"><span>RUDDER</span><span id="v_rv">—</span></div>
+          <div class="bar-track"><div class="bar-fill" id="b_rv" style="width:50%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RC Channel bars -->
+    <div class="card">
+      <div class="card-title">RC Channels (1000 – 2000 µs)</div>
+      <div class="ch-grid" id="chGrid"></div>
+    </div>
+
+    <!-- VRA -->
+    <div class="card">
+      <div class="card-title">VRA Sensitivity (CH7)</div>
+      <div class="vra-row">
+        <input type="range" id="vraSlider" min="0" max="100" value="50"
+          oninput="onVRAChange(this.value)">
+        <span class="vra-value" id="vraVal">50%</span>
+      </div>
+      <div style="font-family:var(--mono);font-size:.6rem;color:var(--dim);margin-top:6px">
+        Drag to override VRA gain on ESP32 | 0% = no stab, 100% = max (×1.5)
+      </div>
+    </div>
+
+    <!-- Switch states -->
+    <div class="card">
+      <div class="card-title">Switch States &amp; Telemetry</div>
+      <div class="sw-row">
+        <span class="sw-pill" id="sw_A">SWA</span>
+        <span class="sw-pill" id="sw_B">SWB</span>
+        <span class="sw-pill" id="sw_C">SWC</span>
+        <span class="sw-pill" id="sw_D">SWD</span>
+      </div>
+      <div class="ts-line">Last update: <span id="tsVal">—</span></div>
+      <div class="ts-line" style="margin-top:4px">Frames rcvd: <span id="frmCount">0</span></div>
+    </div>
+
+  </div><!-- /right-col -->
+</main>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+const WS_HOST = '192.168.4.1';
+const WS_PORT = 81;
+const WS_URL  = `ws://${WS_HOST}:${WS_PORT}`;
+
+let ws          = null;
+let retryDelay  = 1200;
+let retryTimer  = null;
+let frameCount  = 0;
+
+function wsConnect() {
+  clearTimeout(retryTimer);
+  if (ws) { try { ws.close(); } catch(_) {} ws = null; }
+  setConnStatus('connecting');
+  try {
+    ws = new WebSocket(WS_URL);
+  } catch(e) {
+    scheduleRetry(); return;
+  }
+  ws.onopen = () => {
+    setConnStatus('connected');
+    retryDelay = 1200;
+    document.getElementById('btnBind').textContent = 'CONNECTED ✓';
+  };
+  ws.onclose = () => {
+    setConnStatus('disconnected');
+    document.getElementById('btnBind').textContent = 'BIND / RECONNECT';
+    scheduleRetry();
+  };
+  ws.onerror = () => { try { ws.close(); } catch(_) {} };
+  ws.onmessage = evt => {
+    try { processTelemetry(JSON.parse(evt.data)); } catch(_) {}
+  };
+}
+function scheduleRetry() {
+  const d = retryDelay;
+  retryDelay = Math.min(retryDelay * 1.7, 20000);
+  retryTimer = setTimeout(wsConnect, d);
+}
+function wsSend(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+function setConnStatus(s) {
+  const dot = document.getElementById('dot');
+  const txt = document.getElementById('connTxt');
+  dot.className = 'dot ' + s;
+  txt.textContent = s.toUpperCase();
+}
+function sendToggleMode() { wsSend({cmd:'toggle_mode'}); }
+function onVRAChange(v) {
+  document.getElementById('vraVal').textContent = v + '%';
+  wsSend({cmd:'set_vra', val: String(v)});
+}
+
+// ── State ─────────────────────────────────────────────────────────────────
+const state = {
+  r:0, p:0, y:0,
+  ls:1500, rs:1500, es:1500, rsv:1500,
+  c1:1500, c2:1500, c3:1000, c4:1500,
+  c5:1000, c6:1000, c7:1500, c8:1000, c9:1000,
+  vra:50, mode:'NORMAL',
+  crash:false, fs:false,
+  swA:false, swB:false, swC:false, swD:false
+};
+let rollOffset = 0, pitchOffset = 0;
+
+// ── Build CH grid ─────────────────────────────────────────────────────────
+const CH_DEF = [
+  {key:'c1',label:'CH1 AIL'}, {key:'c2',label:'CH2 ELE'}, {key:'c3',label:'CH3 THR'},
+  {key:'c4',label:'CH4 RUD'}, {key:'c5',label:'CH5 SWA'}, {key:'c6',label:'CH6 SWC'},
+  {key:'c7',label:'CH7 VRA'}, {key:'c8',label:'CH8 SWB'}, {key:'c9',label:'CH9 SWD'}
+];
+const chGrid = document.getElementById('chGrid');
+CH_DEF.forEach(({key,label}) => {
+  chGrid.insertAdjacentHTML('beforeend',
+    `<div class="ch-item">
+       <div class="ch-label"><span>${label}</span><span id="cv_${key}">—</span></div>
+       <div class="ch-track"><div class="ch-fill" id="cb_${key}" style="width:50%"></div></div>
+     </div>`);
+});
+
+// ── Telemetry handler ─────────────────────────────────────────────────────
+function processTelemetry(d) {
+  Object.assign(state, d);
+  frameCount++;
+
+  const roll  = state.r - rollOffset;
+  const pitch = state.p - pitchOffset;
+  const yaw   = state.y;
+
+  // Numeric readouts
+  const rollEl  = document.getElementById('rollNum');
+  const pitchEl = document.getElementById('pitchNum');
+  rollEl.textContent  = roll.toFixed(1) + '°';
+  pitchEl.textContent = pitch.toFixed(1) + '°';
+  document.getElementById('yawNum').textContent = yaw.toFixed(1) + '°/s';
+
+  // Color code extremes
+  rollEl.className  = 'att-value' + (Math.abs(roll)>70?'  crit':Math.abs(roll)>45?' warn':'');
+  pitchEl.className = 'att-value' + (Math.abs(pitch)>45?' crit':Math.abs(pitch)>25?' warn':'');
+
+  // Servo bars
+  setBar('ls', state.ls); setBar('rs', state.rs);
+  setBar('es', state.es); setBar('rv', state.rsv);
+
+  // Channel bars
+  CH_DEF.forEach(({key}) => {
+    const v = state[key] || 1500;
+    const pct = ((v-1000)/1000*100).toFixed(1);
+    const fill = document.getElementById('cb_'+key);
+    const val  = document.getElementById('cv_'+key);
+    if (fill) fill.style.width = pct + '%';
+    if (val)  val.textContent  = v;
+  });
+
+  // VRA (read from telemetry, slider follows)
+  if (d.vra !== undefined) {
+    const slider = document.getElementById('vraSlider');
+    const vv = Math.round(d.vra);
+    slider.value = vv;
+    document.getElementById('vraVal').textContent = vv + '%';
+  }
+
+  // Mode badge
+  const mb   = document.getElementById('modeBadge');
+  const mode = (state.mode || 'NORMAL').toUpperCase();
+  mb.textContent = mode;
+  const mClass = {
+    NORMAL:'badge-normal', DIRECT:'badge-direct', RECOVER:'badge-recover',
+    FAILSAFE:'badge-failsafe', LANDING:'badge-landing', TAKEOFF:'badge-takeoff'
+  }[mode] || 'badge-normal';
+  mb.className = 'badge ' + mClass;
+
+  // Crash / FS banners
+  document.getElementById('crashBadge').style.display = state.crash ? '' : 'none';
+  document.getElementById('fsBadge').style.display    = state.fs    ? '' : 'none';
+
+  // Switch pills
+  ['A','B','C','D'].forEach(s => {
+    const el = document.getElementById('sw_' + s);
+    if (el) el.className = 'sw-pill' + (state['sw'+s] ? ' on' : '');
+  });
+
+  // Timestamps / counters
+  document.getElementById('tsVal').textContent   = new Date().toLocaleTimeString();
+  document.getElementById('frmCount').textContent = frameCount;
+
+  // IMU / IBus health indicators
+  const imuH  = document.getElementById('imuHealth');
+  const ibusH = document.getElementById('ibusHealth');
+  if (imuH)  { imuH.textContent  = 'IMU OK';  imuH.className  = 'health-item ok'; }
+  if (ibusH) { ibusH.textContent = state.fs ? 'IBus FS' : 'IBus OK';
+               ibusH.className   = 'health-item ' + (state.fs ? 'warn' : 'ok'); }
+
+  // Push to graph
+  graphPush(Date.now(), roll, pitch);
+}
+
+function setBar(id, us) {
+  const pct = ((us - 1000) / 1000 * 100).toFixed(1);
+  const fill = document.getElementById('b_' + id);
+  const val  = document.getElementById('v_' + id);
+  if (fill) fill.style.width = pct + '%';
+  if (val)  val.textContent  = us + 'µs';
+}
+
+// ── Reset horizon offset ──────────────────────────────────────────────────
+function resetHorizon() {
+  rollOffset  = state.r  || 0;
+  pitchOffset = state.p  || 0;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ARTIFICIAL HORIZON (AHI)
+// ══════════════════════════════════════════════════════════════════════════
+const AHI   = document.getElementById('ahi');
+const AHIX  = AHI.getContext('2d');
+const AW    = AHI.width, AH = AHI.height;
+const CX    = AW / 2,    CY = AH / 2;
+const HRADIUS = AW / 2 - 2;
+
+function drawAHI() {
+  requestAnimationFrame(drawAHI);
+
+  const roll  = (state.r - rollOffset) * Math.PI / 180;
+  const pitch = (state.p - pitchOffset);
+
+  // Pixels per degree: full height = 90°
+  const PX_PER_DEG = AH / 90;
+  const pitchPx = pitch * PX_PER_DEG;
+
+  AHIX.clearRect(0, 0, AW, AH);
+  AHIX.save();
+
+  // Circular clip
+  AHIX.beginPath();
+  AHIX.arc(CX, CY, HRADIUS, 0, Math.PI * 2);
+  AHIX.clip();
+
+  // ── Sky + Ground ──────────────────────────────────────────────────────
+  AHIX.save();
+  AHIX.translate(CX, CY);
+  AHIX.rotate(roll);
+  AHIX.translate(0, pitchPx);
+
+  // Sky
+  const sky = AHIX.createLinearGradient(0, -AH, 0, 0);
+  sky.addColorStop(0, '#0a2a5a');
+  sky.addColorStop(1, '#1a5a8a');
+  AHIX.fillStyle = sky;
+  AHIX.fillRect(-AW, -AH*1.5, AW*2, AH*1.5);
+
+  // Ground
+  const gnd = AHIX.createLinearGradient(0, 0, 0, AH);
+  gnd.addColorStop(0, '#5c3a1a');
+  gnd.addColorStop(1, '#3a2000');
+  AHIX.fillStyle = gnd;
+  AHIX.fillRect(-AW, 0, AW*2, AH*1.5);
+
+  // Horizon line
+  AHIX.strokeStyle = '#ffffff';
+  AHIX.lineWidth = 2.5;
+  AHIX.beginPath(); AHIX.moveTo(-AW, 0); AHIX.lineTo(AW, 0); AHIX.stroke();
+
+  // Pitch ladder
+  AHIX.font = '11px Courier New';
+  AHIX.textAlign = 'left';
+  for (let deg = -80; deg <= 80; deg += 10) {
+    if (deg === 0) continue;
+    const y = -deg * PX_PER_DEG;
+    const halfW = (deg % 20 === 0) ? 52 : 32;
+    AHIX.strokeStyle = 'rgba(255,255,255,0.55)';
+    AHIX.lineWidth   = deg % 20 === 0 ? 1.5 : 1;
+    AHIX.beginPath(); AHIX.moveTo(-halfW, y); AHIX.lineTo(halfW, y); AHIX.stroke();
+    if (deg % 20 === 0) {
+      AHIX.fillStyle = 'rgba(255,255,255,0.7)';
+      AHIX.fillText(deg > 0 ? '+'+deg : deg, halfW + 6, y + 4);
+      AHIX.textAlign = 'right';
+      AHIX.fillText(deg > 0 ? '+'+deg : deg, -halfW - 6, y + 4);
+      AHIX.textAlign = 'left';
+    }
+  }
+  AHIX.restore();
+
+  // ── Fixed reticle ──────────────────────────────────────────────────────
+  const amber = '#ffb000';
+  AHIX.strokeStyle = amber;
+  AHIX.lineWidth   = 3;
+  AHIX.lineCap     = 'round';
+
+  // Left wing
+  AHIX.beginPath();
+  AHIX.moveTo(CX - 70, CY); AHIX.lineTo(CX - 22, CY);
+  AHIX.lineTo(CX - 22, CY + 14);
+  AHIX.stroke();
+
+  // Right wing
+  AHIX.beginPath();
+  AHIX.moveTo(CX + 70, CY); AHIX.lineTo(CX + 22, CY);
+  AHIX.lineTo(CX + 22, CY + 14);
+  AHIX.stroke();
+
+  // Center dot
+  AHIX.beginPath();
+  AHIX.arc(CX, CY, 5, 0, Math.PI * 2);
+  AHIX.fillStyle = amber;
+  AHIX.fill();
+
+  // ── Roll arc + ticks ───────────────────────────────────────────────────
+  AHIX.save();
+  AHIX.translate(CX, CY);
+
+  // Arc background
+  AHIX.strokeStyle = 'rgba(255,255,255,0.15)';
+  AHIX.lineWidth = 1;
+  AHIX.beginPath();
+  AHIX.arc(0, 0, HRADIUS - 4, -Math.PI*0.75, -Math.PI*0.25);
+  AHIX.stroke();
+
+  // Tick marks
+  for (const deg of [-60,-45,-30,-20,-10,0,10,20,30,45,60]) {
+    const a   = (deg - 90) * Math.PI / 180;
+    const len = (deg % 30 === 0) ? 15 : (deg % 10 === 0 ? 9 : 6);
+    const r1  = HRADIUS - 4;
+    const r2  = r1 - len;
+    AHIX.strokeStyle = deg === 0 ? '#ffffff' : 'rgba(255,255,255,0.5)';
+    AHIX.lineWidth   = deg === 0 ? 2 : 1;
+    AHIX.beginPath();
+    AHIX.moveTo(Math.cos(a)*r1, Math.sin(a)*r1);
+    AHIX.lineTo(Math.cos(a)*r2, Math.sin(a)*r2);
+    AHIX.stroke();
+  }
+
+  // Roll pointer triangle
+  AHIX.rotate(roll);
+  AHIX.fillStyle   = amber;
+  AHIX.strokeStyle = 'transparent';
+  AHIX.beginPath();
+  AHIX.moveTo(0, -(HRADIUS - 4));
+  AHIX.lineTo(-7, -(HRADIUS - 20));
+  AHIX.lineTo( 7, -(HRADIUS - 20));
+  AHIX.closePath();
+  AHIX.fill();
+
+  AHIX.restore();
+
+  // ── Outer bezel ───────────────────────────────────────────────────────
+  AHIX.beginPath();
+  AHIX.arc(CX, CY, HRADIUS, 0, Math.PI * 2);
+  AHIX.strokeStyle = '#1b2535';
+  AHIX.lineWidth   = 4;
+  AHIX.stroke();
+
+  // Crash overlay
+  if (state.crash) {
+    AHIX.save();
+    AHIX.beginPath();
+    AHIX.arc(CX, CY, HRADIUS, 0, Math.PI*2);
+    AHIX.clip();
+    AHIX.fillStyle = 'rgba(255,59,59,0.12)';
+    AHIX.fillRect(0, 0, AW, AH);
+    AHIX.restore();
+  }
+
+  AHIX.restore();
+}
+drawAHI();
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ROLL / PITCH GRAPH
+// ══════════════════════════════════════════════════════════════════════════
+const GCANVAS   = document.getElementById('graph');
+const GCTX      = GCANVAS.getContext('2d');
+const HIST_MS   = 10000;
+let   rollHist  = [];
+let   pitchHist = [];
+
+function graphPush(ts, r, p) {
+  const cutoff = ts - HIST_MS;
+  rollHist.push([ts, r]);
+  pitchHist.push([ts, p]);
+  while (rollHist.length  && rollHist[0][0]  < cutoff) rollHist.shift();
+  while (pitchHist.length && pitchHist[0][0] < cutoff) pitchHist.shift();
+  drawGraph();
+}
+
+function drawGraph() {
+  const W = GCANVAS.offsetWidth || GCANVAS.width;
+  const H = GCANVAS.height;
+  GCANVAS.width = W;
+
+  const now = Date.now();
+
+  // Background
+  GCTX.fillStyle = '#0a0f16';
+  GCTX.fillRect(0, 0, W, H);
+
+  // Grid: horizontal degree lines
+  GCTX.strokeStyle = '#151f2c';
+  GCTX.lineWidth   = 1;
+  for (let deg = -90; deg <= 90; deg += 30) {
+    const y = H/2 - (deg / 90) * (H/2);
+    GCTX.beginPath(); GCTX.moveTo(0, y); GCTX.lineTo(W, y); GCTX.stroke();
+    if (deg !== 0) {
+      GCTX.fillStyle = '#1e2e3e';
+      GCTX.font      = '9px Courier New';
+      GCTX.fillText(deg + '°', 2, y - 1);
+    }
+  }
+  // Zero line
+  GCTX.strokeStyle = '#1e3040';
+  GCTX.lineWidth   = 1.5;
+  GCTX.beginPath(); GCTX.moveTo(0, H/2); GCTX.lineTo(W, H/2); GCTX.stroke();
+
+  // Vertical time grid
+  GCTX.strokeStyle = '#111a24';
+  GCTX.lineWidth   = 1;
+  for (let t = 0; t <= 10; t++) {
+    const x = (t / 10) * W;
+    GCTX.beginPath(); GCTX.moveTo(x, 0); GCTX.lineTo(x, H); GCTX.stroke();
+  }
+
+  // Plot function
+  function plotLine(hist, color) {
+    if (hist.length < 2) return;
+    GCTX.save();
+    GCTX.strokeStyle = color;
+    GCTX.lineWidth   = 1.8;
+    GCTX.shadowColor = color;
+    GCTX.shadowBlur  = 3;
+    GCTX.beginPath();
+    hist.forEach(([ts, v], i) => {
+      const x = ((ts - (now - HIST_MS)) / HIST_MS) * W;
+      const y = H/2 - (v / 90) * (H/2);
+      i === 0 ? GCTX.moveTo(x, y) : GCTX.lineTo(x, y);
+    });
+    GCTX.stroke();
+    GCTX.restore();
+  }
+
+  plotLine(rollHist,  '#00cfff');
+  plotLine(pitchHist, '#ffb000');
+
+  // Legend
+  GCTX.font      = '10px Courier New';
+  GCTX.fillStyle = '#00cfff'; GCTX.fillRect(W-88, 7, 14, 3);
+  GCTX.fillStyle = '#4a6a7a'; GCTX.fillText('ROLL',  W-70, 12);
+  GCTX.fillStyle = '#ffb000'; GCTX.fillRect(W-88, 18, 14, 3);
+  GCTX.fillStyle = '#4a6a7a'; GCTX.fillText('PITCH', W-70, 23);
+}
+drawGraph();
+
+// ── Start ─────────────────────────────────────────────────────────────────
+wsConnect();
+</script>
+</body>
+</html>

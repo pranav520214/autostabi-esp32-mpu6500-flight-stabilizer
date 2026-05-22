@@ -1,0 +1,28 @@
+# Arduino / ESP32 build outputs
+build/
+*.bin
+*.elf
+*.hex
+*.map
+*.o
+*.d
+*.eep
+*.lst
+*.sym
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Arduino IDE / local settings
+*.tmp
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
